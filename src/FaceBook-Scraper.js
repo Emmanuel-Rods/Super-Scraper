@@ -5,13 +5,11 @@ const fs = require("fs").promises;
 const XLSX = require("xlsx");
 const logError = require("./logger.js");
 
-const scrollDelay = 1500 //in milliseconds
-const pageLoadDelay = 8000 // in miliseconds
+const scrollDelay = 1000; //in milliseconds
+const pageLoadDelay = 2000; // in miliseconds
 
-
-
-async function facebookScraper(query , cityName) {
-  const browser = await puppeteerExtra.launch({ headless: true});
+async function facebookScraper(query, cityName) {
+  const browser = await puppeteerExtra.launch({ headless: false });
   const page = await browser.newPage();
 
   await page.setViewport({ width: 1920, height: 1080 });
@@ -79,7 +77,7 @@ async function facebookScraper(query , cityName) {
     try {
       const newPage = await browser.newPage();
       await newPage.goto(link, { waitUntil: "domcontentloaded" }); // Wait until page is loaded
-      
+
       await new Promise((resolve) => setTimeout(resolve, pageLoadDelay));
       const data = await newPage.evaluate(() => {
         const extractInfoByIcon = (iconName) => {
@@ -98,7 +96,7 @@ async function facebookScraper(query , cityName) {
           }
           return null;
         };
-        //href tags 
+        //href tags
         const extractLinkByIcon = (iconName) => {
           const icon = Array.from(document.querySelectorAll("img")).find(
             (img) => img.src.endsWith(iconName)
@@ -115,44 +113,62 @@ async function facebookScraper(query , cityName) {
           }
           return null;
         };
-        
+
         const allH1s = [...document.querySelectorAll('div[role="main"] h1')]; //only selects from the main div
-        const nameElement = allH1s.length ? allH1s[0] : null; 
+        const nameElement = allH1s.length ? allH1s[0] : null;
         const name = nameElement ? nameElement.textContent.trim() : null;
         // Extract phone number, email, and website using their unique file names
         const phone = extractInfoByIcon("Dc7-7AgwkwS.png");
         const email = extractInfoByIcon("2PIcyqpptfD.png");
-        const website = extractLinkByIcon("BQdeC67wT9z.png"); //for facebook redirect links
-        // const website = extractInfoByIcon("BQdeC67wT9z.png");
-        const address = null //helper 
-        const category = null //helper
+        const website = extractLinkByIcon("BQdeC67wT9z.png"); //for facebook redirect links BQdeC67wT9z
+        const address = extractInfoByIcon("8k_Y-oVxbuU.png"); //helper
+        const category =
+          (extractInfoByIcon("4PEEs7qlhJk.png") || "")
+            .replace(/\bPage\b\s*[·\-|:]?\s*/i, "")
+            .trim() || null;
         return {
           name,
           phone,
           email,
           website,
           address,
-          category
+          category,
         };
       });
-        //to convert facebook redirects to normal urls 
+      //to convert facebook redirects to normal urls
+      // async function extractRedirectedURL(facebookLink) {
+      //   try {
+      //     const [response] = await Promise.all([
+      //       page.waitForNavigation({ waitUntil: "networkidle2" }),
+      //       page.goto(facebookLink),
+      //     ]);
+
+      //     return response.url();
+      //   } catch (error) {
+      //     console.error("Error extracting the redirected link:", error);
+      //     return null;
+      //   }
+      // }
       async function extractRedirectedURL(facebookLink) {
         try {
-          const [response] = await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2' }), 
-            page.goto(facebookLink), 
-          ]);
-      
-        
-          return response.url();
+          const response = await page.goto(facebookLink, {
+            waitUntil: "networkidle2",
+            timeout: 30000, // optional: avoid hanging indefinitely
+          });
+
+          const finalUrl = page.url();
+          console.log("Redirected to:", finalUrl);
+
+          return finalUrl;
         } catch (error) {
           console.error("Error extracting the redirected link:", error);
           return null;
         }
       }
-       //convert
-      if(data.website){
-        data.website = await extractRedirectedURL(data.website)
+
+      //convert
+      if (data.website) {
+        data.website = await extractRedirectedURL(data.website);
       }
 
       // Push the extracted data to the array
@@ -163,16 +179,29 @@ async function facebookScraper(query , cityName) {
       // Close the new page after extracting data
       await newPage.close();
     } catch (error) {
-      logError(error, 'FaceBook-Scraper');
+      logError(error, "FaceBook-Scraper");
       console.error(`Error extracting data from ${link}:`, error);
     }
   }
   // await page.screenshot({ path: "screenshot.png" });
   // saveToExcel(extractedData, `${query}-in-${cityName}-facebook.xlsx`);
   await browser.close();
-  console.info(`Extracted Data from FaceBook for Query ${query} : ${extractedData.length}`)
-  console.warn('____________________________________________________________________________________________________')
+  console.info(
+    `Extracted Data from FaceBook for Query ${query} : ${extractedData.length}`
+  );
+  console.warn(
+    "____________________________________________________________________________________________________"
+  );
   return extractedData;
 }
 
 module.exports = facebookScraper;
+
+// (async () => {
+//   const data = await facebookScraper("cleaning", "Texas");
+
+//   const ws = XLSX.utils.json_to_sheet(data);
+//   const wb = XLSX.utils.book_new();
+//   XLSX.utils.book_append_sheet(wb, ws, "Results");
+//   XLSX.writeFile(wb, "facebook_results.xlsx");
+// })();
