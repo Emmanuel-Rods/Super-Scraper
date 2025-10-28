@@ -7,7 +7,6 @@ const logError = require("./logger.js");
 const MAX_DEPTH = 2;
 const CONCURRENT_LIMIT = 5;
 
-
 const { connect } = require("puppeteer-real-browser");
 
 // const extractEmails = (html) => {
@@ -51,11 +50,20 @@ const extractEmails = (html) => {
     "address.com",
     "sentry.io",
     "sentry.wixpress.com",
-    'sentry-next.wixpress.com'
+    "sentry-next.wixpress.com",
   ];
 
   // List of specific fake emails to exclude
-  const fakeEmails = ["0@gmail.com", "info@mysite.com" , 'john@doe.com' , 'john@smith.com' , 'impallari@gmail.com' , 'filler@godaddy.com' , 'contact@sansoxygen.com' ,  "micah@michahrich.com"];
+  const fakeEmails = [
+    "0@gmail.com",
+    "info@mysite.com",
+    "john@doe.com",
+    "john@smith.com",
+    "impallari@gmail.com",
+    "filler@godaddy.com",
+    "contact@sansoxygen.com",
+    "micah@michahrich.com",
+  ];
 
   // List of excluded extensions (e.g., image files)
   const excludedExtensions = [
@@ -86,7 +94,6 @@ const extractEmails = (html) => {
   return Array.from(new Set(validEmails)); // Deduplicate results
 };
 
-
 const extractLinks = (html, baseUrl) => {
   const $ = cheerio.load(html);
   const links = new Set();
@@ -110,7 +117,7 @@ const extractLinks = (html, baseUrl) => {
           links.add(fullUrl);
         }
         //add base link
-        links.add(baseHomePage + '/');
+        links.add(baseHomePage + "/");
       } catch (error) {
         console.warn(`Invalid URL: ${href} on ${baseUrl}`, error.message);
       }
@@ -137,16 +144,15 @@ const extractLinks = (html, baseUrl) => {
 //   }
 // }
 
-
 const findEmails = async (url, depth = 0, visited = new Set()) => {
   if (visited.has(url) || depth > MAX_DEPTH) return null;
   visited.add(url);
 
   try {
     console.log(`Scraping: ${url}`);
-    const response = await axios.get(url,{
-      timeout: 10000 
-  });
+    const response = await axios.get(url, {
+      timeout: 10000,
+    });
     const html = response.data;
 
     const emails = extractEmails(html);
@@ -208,9 +214,8 @@ async function processRowsAndSaveEmails(jsonArray) {
     }
     updatedJson.push(updatedRow);
   }
-  return updatedJson ;
+  return updatedJson;
 }
-
 
 const startCrawler = async (websiteUrl) => {
   const emails = await findEmails(websiteUrl);
@@ -232,49 +237,51 @@ const getHomePage = (url) => {
   }
 };
 
-async function emailCrawler(jsonArray, fileName , location) {
+async function emailCrawler(jsonArray, fileName, location) {
   if (jsonArray.length == 0) {
-    console.warn(`Json Array has no data for ${fileName}`)
-    return []
+    console.warn(`Json Array has no data for ${fileName}`);
+    return [];
   }
-  UpdatedjsonArray = await processRowsAndSaveEmails(jsonArray) //using html parsing
-  console.log(jsonArray.length)
+  UpdatedjsonArray = await processRowsAndSaveEmails(jsonArray); //using html parsing
+  console.log(jsonArray.length);
   //loop over the json array
   const rows = [];
   for (const data of UpdatedjsonArray) {
     const email = data[Object.keys(data)[2]]; //third property
     const website = data[Object.keys(data)[3]]; // fourth propery
-    try{
+    try {
       if (website && !email) {
         const [emailArray] = await jsRender(website);
         data[Object.keys(data)[2]] = emailArray;
         rows.push(data); //modified data
         console.log(data);
       } else {
-        rows.push(data); 
+        rows.push(data);
       }
+    } catch (error) {
+      logError(error, "FacebookScraper");
+      console.error(`error occured while processing ${data} , ${error}`);
     }
-    catch(error){
-      logError(error, 'FacebookScraper');
-      console.error(`error occured while processing ${data} , ${error}`)
-   }
   }
+
   function filterRowsWithEmail(rows) {
-    return rows.filter(row => row[Object.keys(row)[2]]); // Checks if the third property (email) exists
+    return rows; //return rows.filter((row) => row[Object.keys(row)[2]]); // Checks if the third property (email) exists
   }
 
-  filteredRows = filterRowsWithEmail(rows)
+  filteredRows = filterRowsWithEmail(rows);
 
-  if(filteredRows.length == 0){
-    console.warn(`No Data Saved for : ${fileName} but file will be Created , Either there were No Emails OR Internet Connectivity Was Lost During Email Crawling`)
+  if (filteredRows.length == 0) {
+    console.warn(
+      `No Data Saved for : ${fileName} but file will be Created , Either there were No Emails OR Internet Connectivity Was Lost During Email Crawling`
+    );
   }
-  
-  //extract categories function 
+
+  //extract categories function
   function extractCategory(filename, city, state) {
     const normalizedFilename = filename.toLowerCase();
     const normalizedCity = city.toLowerCase();
     const normalizedState = state.toLowerCase();
-  
+
     let modifiedFilename = normalizedFilename
       .replace(normalizedCity, "") // Remove city
       .replace(normalizedState, ""); // Remove state
@@ -283,22 +290,23 @@ async function emailCrawler(jsonArray, fileName , location) {
     modifiedFilename = modifiedFilename.replace(/\.[^/.]+$/, ""); // Remove file extension
 
     modifiedFilename = modifiedFilename.trim();
-    const words = modifiedFilename.split(/\s+/); 
-  
-    return words.join(" ") || null; 
+    const words = modifiedFilename.split(/\s+/);
+
+    return words.join(" ") || null;
   }
 
   const parts = location.split(/\s+/);
-  const state = parts.pop(); 
+  const state = parts.pop();
   const city = parts.join(" ");
   const extractedcategory = extractCategory(fileName, city, state);
 
-  //standerizing the excel rows 
-  const standardizedArray = filteredRows.map(item => ({
+  //standerizing the excel rows
+  const standardizedArray = filteredRows.map((item) => ({
     [extractedcategory]: item.name || null,
-    [city]: item.email ,
+    [city]: item.email,
     [state]: item.phone || null,
     category: item.category || null,
+    website: item.website || null,
     address: item.address || null,
   }));
 
@@ -311,7 +319,6 @@ async function emailCrawler(jsonArray, fileName , location) {
   console.log(`Updated Excel file saved at: ${fileName}`);
 }
 
-
 async function jsRender(url) {
   let browser, page;
   try {
@@ -319,7 +326,7 @@ async function jsRender(url) {
     const puppeteerContext = await connect({
       defaultViewport: null,
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
       customConfig: {},
       turnstile: true,
       connectOption: { defaultViewport: null },
@@ -378,7 +385,10 @@ async function jsRender(url) {
           continue;
         }
         try {
-          await pageWithCookies.goto(link, { timeout: 30000, waitUntil: "domcontentloaded" });
+          await pageWithCookies.goto(link, {
+            timeout: 30000,
+            waitUntil: "domcontentloaded",
+          });
           await pageWithCookies.waitForSelector("body", { timeout: 10000 });
           const subPageHTML = await pageWithCookies.content();
           const subPageEmails = extractEmails(subPageHTML);
@@ -386,7 +396,7 @@ async function jsRender(url) {
             emails.push(...subPageEmails);
           }
         } catch (subPageError) {
-          logError(subPageError, 'Email Crawler');
+          logError(subPageError, "Email Crawler");
           console.error(`Failed to process ${link}:`, subPageError.message);
         }
       }
@@ -395,7 +405,7 @@ async function jsRender(url) {
     console.log("Collected Emails:", emails);
     return Array.from(new Set(emails));
   } catch (err) {
-    logError(err, 'Email Crawler');
+    logError(err, "Email Crawler");
     console.error(`Error in jsRender: ${err.message}`);
     return [];
   } finally {
@@ -403,7 +413,7 @@ async function jsRender(url) {
       try {
         await browser.close();
       } catch (error) {
-        console.log(`error while closing the browser ${error}`)
+        console.log(`error while closing the browser ${error}`);
       }
     }
   }
